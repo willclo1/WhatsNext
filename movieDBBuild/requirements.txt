@@ -1,0 +1,6 @@
+sqlalchemy>=2.0
+psycopg[binary]
+httpx
+python-dotenv
+tqdm
+orjson
