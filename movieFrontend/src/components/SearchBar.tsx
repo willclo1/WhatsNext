@@ -11,16 +11,18 @@ export default function SearchBar({
 }: SearchBarProps) {
     return (
         <div className="relative w-full">
-            <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#686870]" />
+            <div className="pointer-events-none absolute inset-0 rounded-lg border border-dashed border-gold/25" />
+
+            <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
 
             <input
                 type="search"
                 value={value}
                 onChange={event => onChange(event.target.value)}
-                placeholder="Search movies..."
+                placeholder="Search the marquee…"
                 aria-label="Search movies"
                 autoComplete="off"
-                className="h-14 w-full rounded-xl border border-white/10 bg-[#141419] pl-12 pr-4 text-base text-[#F5F5F2] outline-none placeholder:text-[#686870] transition focus:border-[#E8A84A]/60 focus:ring-2 focus:ring-[#E8A84A]/10"
+                className="relative h-14 w-full rounded-lg border border-line bg-surface pl-12 pr-4 text-base text-paper outline-none placeholder:text-muted transition focus:border-gold/70 focus:ring-2 focus:ring-gold/15"
             />
         </div>
     );

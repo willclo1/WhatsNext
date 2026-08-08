@@ -82,7 +82,7 @@ export default function MovieDetailModal({
 
     return (
         <div
-            className="fixed inset-0 z-50 overflow-y-auto bg-[#0B0B0F]/95 p-4 backdrop-blur-md sm:p-6"
+            className="fixed inset-0 z-50 overflow-y-auto bg-ink/95 p-4 backdrop-blur-md sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-label={`${details.title} details`}
@@ -92,15 +92,17 @@ export default function MovieDetailModal({
                 }
             }}
         >
-            <div className="relative mx-auto min-h-full max-w-6xl overflow-hidden rounded-2xl border border-white/10 bg-[#101015] shadow-2xl">
+            <div className="relative mx-auto min-h-full max-w-6xl overflow-hidden rounded-xl border border-line bg-ink-soft shadow-2xl">
+                <div className="sprocket-strip" />
+
                 {backdropUrl && (
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-[440px] overflow-hidden">
                         <img
                             src={backdropUrl}
                             alt=""
-                            className="h-full w-full object-cover opacity-30"
+                            className="h-full w-full object-cover opacity-25"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-b from-[#101015]/10 via-[#101015]/70 to-[#101015]" />
+                        <div className="absolute inset-0 bg-gradient-to-b from-ink-soft/10 via-ink-soft/75 to-ink-soft" />
                     </div>
                 )}
 
@@ -108,14 +110,14 @@ export default function MovieDetailModal({
                     type="button"
                     onClick={onClose}
                     aria-label="Close movie details"
-                    className="absolute right-5 top-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-[#F5F5F2] backdrop-blur transition hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E8A84A]"
+                    className="absolute right-5 top-8 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-gold/30 bg-ink/70 text-paper backdrop-blur transition hover:border-gold hover:text-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
                 >
                     <CloseIcon />
                 </button>
 
-                <div className="relative z-10 grid gap-8 p-6 sm:p-10 lg:grid-cols-[280px_1fr]">
+                <div className="relative z-10 grid gap-8 p-6 pt-10 sm:p-10 sm:pt-12 lg:grid-cols-[280px_1fr]">
                     <div>
-                        <div className="mx-auto max-w-[280px] overflow-hidden rounded-xl bg-[#1B1B22] shadow-2xl lg:mx-0">
+                        <div className="mx-auto max-w-[280px] overflow-hidden rounded-lg bg-surface shadow-2xl ring-1 ring-line lg:mx-0">
                             {posterUrl ? (
                                 <img
                                     src={posterUrl}
@@ -123,7 +125,7 @@ export default function MovieDetailModal({
                                     className="w-full"
                                 />
                             ) : (
-                                <div className="flex aspect-[2/3] items-center justify-center p-6 text-center text-sm text-[#686870]">
+                                <div className="flex aspect-[2/3] items-center justify-center p-6 text-center text-sm text-muted">
                                     No poster available
                                 </div>
                             )}
@@ -131,11 +133,11 @@ export default function MovieDetailModal({
                     </div>
 
                     <div className="pt-2 sm:pt-8">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[#A4A4AC]">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-sm text-muted">
                             {year && <span>{year}</span>}
 
                             {year && details.original_language && (
-                                <span className="text-[#686870]">·</span>
+                                <span className="text-line">/</span>
                             )}
 
                             {details.original_language && (
@@ -146,32 +148,32 @@ export default function MovieDetailModal({
 
                             {details.vote_average != null && (
                                 <>
-                                    <span className="text-[#686870]">·</span>
-                                    <span className="font-medium text-[#E8A84A]">
-                                        {details.vote_average.toFixed(1)}/10
+                                    <span className="text-line">/</span>
+                                    <span className="font-semibold text-gold-soft">
+                                        ★ {details.vote_average.toFixed(1)} / 10
                                     </span>
                                 </>
                             )}
                         </div>
 
-                        <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-[#F5F5F2] sm:text-5xl">
+                        <h1 className="mt-3 max-w-3xl font-display text-4xl italic leading-[1.05] tracking-tight text-paper sm:text-5xl">
                             {details.title}
                         </h1>
 
                         {details.original_title &&
                             details.original_title !== details.title && (
-                                <p className="mt-2 text-sm text-[#686870]">
+                                <p className="mt-2 text-sm text-muted">
                                     {details.original_title}
                                 </p>
                             )}
 
                         {details.overview && (
                             <section className="mt-8">
-                                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[#686870]">
+                                <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-muted">
                                     Synopsis
                                 </h2>
 
-                                <p className="mt-3 max-w-2xl text-base leading-7 text-[#C4C4CA]">
+                                <p className="mt-3 max-w-2xl text-base leading-7 text-paper-dim">
                                     {details.overview}
                                 </p>
                             </section>
@@ -179,22 +181,22 @@ export default function MovieDetailModal({
 
                         <div className="mt-8 grid max-w-2xl gap-4 sm:grid-cols-2">
                             {details.vote_count != null && (
-                                <div className="rounded-xl border border-white/5 bg-white/[0.025] p-4">
-                                    <p className="text-xs uppercase tracking-wider text-[#686870]">
+                                <div className="rounded-lg border border-dashed border-line bg-surface/60 p-4">
+                                    <p className="font-mono text-xs uppercase tracking-wider text-muted">
                                         Votes
                                     </p>
-                                    <p className="mt-1 text-[#F5F5F2]">
+                                    <p className="mt-1 font-mono text-paper">
                                         {details.vote_count.toLocaleString()}
                                     </p>
                                 </div>
                             )}
 
                             {details.popularity != null && (
-                                <div className="rounded-xl border border-white/5 bg-white/[0.025] p-4">
-                                    <p className="text-xs uppercase tracking-wider text-[#686870]">
+                                <div className="rounded-lg border border-dashed border-line bg-surface/60 p-4">
+                                    <p className="font-mono text-xs uppercase tracking-wider text-muted">
                                         Popularity
                                     </p>
-                                    <p className="mt-1 text-[#F5F5F2]">
+                                    <p className="mt-1 font-mono text-paper">
                                         {details.popularity.toFixed(1)}
                                     </p>
                                 </div>
@@ -202,13 +204,13 @@ export default function MovieDetailModal({
                         </div>
 
                         {loading && (
-                            <p className="mt-8 text-sm text-[#686870]">
+                            <p className="mt-8 text-sm text-muted">
                                 Loading full details…
                             </p>
                         )}
 
                         {error && (
-                            <p className="mt-8 text-sm text-red-300">
+                            <p className="mt-8 text-sm text-velvet-soft">
                                 {error}
                             </p>
                         )}

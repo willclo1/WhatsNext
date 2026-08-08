@@ -11,7 +11,7 @@ export default function CloseIcon({
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             strokeLinecap="round"
             aria-hidden="true"
         >

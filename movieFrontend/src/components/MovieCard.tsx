@@ -24,10 +24,10 @@ export default function MovieCard({
         <button
             type="button"
             onClick={() => onClick(movie)}
-            className="group w-full text-left outline-none"
+            className="lift group w-full text-left outline-none"
         >
-            <div className="overflow-hidden rounded-xl bg-[#141419] ring-1 ring-white/5 transition duration-300 group-hover:-translate-y-1 group-hover:ring-white/15 group-focus-visible:ring-2 group-focus-visible:ring-[#E8A84A]">
-                <div className="aspect-[2/3] overflow-hidden bg-[#1B1B22]">
+            <div className="overflow-hidden rounded-lg bg-surface ring-1 ring-line group-hover:-translate-y-1 group-hover:ring-gold/40 group-hover:shadow-[0_18px_40px_-18px_rgb(232_170_61_/_0.35)] group-focus-visible:ring-2 group-focus-visible:ring-gold">
+                <div className="relative aspect-[2/3] overflow-hidden bg-ink-soft">
                     {posterUrl ? (
                         <img
                             src={posterUrl}
@@ -36,30 +36,30 @@ export default function MovieCard({
                             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
                         />
                     ) : (
-                        <div className="flex h-full items-center justify-center p-6 text-center text-sm text-[#686870]">
+                        <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted">
                             No poster available
                         </div>
                     )}
+
+                    {movie.vote_average !== null && (
+                        <span className="absolute right-2 top-2 rounded-full bg-ink/80 px-2 py-1 font-mono text-xs font-semibold text-gold-soft backdrop-blur">
+                            ★ {movie.vote_average.toFixed(1)}
+                        </span>
+                    )}
                 </div>
 
+                <div className="perforation" />
+
                 <div className="space-y-1 p-4">
-                    <h2 className="line-clamp-2 font-semibold leading-snug text-[#F5F5F2]">
+                    <h2 className="line-clamp-2 font-semibold leading-snug text-paper">
                         {movie.title}
                     </h2>
 
-                    <div className="flex items-center gap-2 text-sm text-[#A4A4AC]">
-                        {year && <span>{year}</span>}
-
-                        {year && movie.vote_average !== null && (
-                            <span className="text-[#686870]">·</span>
-                        )}
-
-                        {movie.vote_average !== null && (
-                            <span className="text-[#E8A84A]">
-                                {movie.vote_average.toFixed(1)}
-                            </span>
-                        )}
-                    </div>
+                    {year && (
+                        <p className="font-mono text-xs tracking-wide text-muted">
+                            {year}
+                        </p>
+                    )}
                 </div>
             </div>
         </button>
