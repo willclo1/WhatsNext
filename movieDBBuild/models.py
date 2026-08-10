@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, Float, Integer, String, Text, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, Date, Float, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
 class Movie(Base):
@@ -33,3 +33,47 @@ class Movie(Base):
     adult = mapped_column(Boolean)
 
     updated_at = mapped_column(DateTime)
+
+    cast = relationship("MovieCast", back_populates="movie")
+
+
+class MovieCast(Base):
+    __tablename__ = "movie_cast"
+
+    movie_id = mapped_column(
+
+        Integer,
+
+        ForeignKey("movies.tmdb_id"),
+
+        primary_key=True
+
+    )
+
+    actor_id = mapped_column(
+
+        Integer,
+
+        ForeignKey("actors.actor_id"),
+
+        primary_key=True
+
+    )
+
+    character = mapped_column(String(500))
+
+    cast_order = mapped_column(Integer)
+
+    movie = relationship("Movie", back_populates="cast")
+
+    actor = relationship("Actors", back_populates="cast")
+
+
+
+class Actors(Base):
+    __tablename__ = "actors"
+
+    actor_id = mapped_column(Integer, primary_key=True)
+    name = mapped_column(String(255), nullable=False)
+
+    cast = relationship("MovieCast", back_populates="actor")
