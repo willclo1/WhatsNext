@@ -1,5 +1,6 @@
 import { API_URL } from "../config";
 import type { Movie, MovieSearchResponse } from "../types/movie";
+import type { CastMember } from "../types/game";
 
 async function getErrorMessage(response: Response): Promise<string> {
     try {
@@ -41,6 +42,21 @@ export async function getMovie(
     signal?: AbortSignal,
 ): Promise<Movie> {
     const url = new URL(`/movie/${tmdbId}`, API_URL);
+
+    const response = await fetch(url, { signal });
+
+    if (!response.ok) {
+        throw new Error(await getErrorMessage(response));
+    }
+
+    return response.json();
+}
+
+export async function getMovieCast(
+    tmdbId: number,
+    signal?: AbortSignal,
+): Promise<CastMember[]> {
+    const url = new URL(`/movie/${tmdbId}/cast`, API_URL);
 
     const response = await fetch(url, { signal });
 

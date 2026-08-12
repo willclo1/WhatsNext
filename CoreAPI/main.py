@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from routers.movie import router as MovieRouter
+from routers.game import router as GameRouter
+from routers.actor import router as ActorRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -23,3 +25,5 @@ app.add_middleware(
 
 )
 app.include_router(MovieRouter)
+app.include_router(GameRouter)
+app.include_router(ActorRouter)
