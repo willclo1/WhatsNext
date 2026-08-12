@@ -14,6 +14,12 @@ export interface GameStep {
     actor_name: string;
     movie_id: number;
     movie_title: string;
+    /**
+     * Poster art for this step's film. Present for hops made in this session,
+     * since the chosen film already carries it; absent for history restored
+     * from the API, which returns titles only. Poster falls back to a plate.
+     */
+    poster_path?: string | null;
 }
 
 export interface GuessResult {
@@ -21,6 +27,12 @@ export interface GuessResult {
     reason?: string;
     won?: boolean;
     game_id?: number;
+}
+
+/** A rejected hop, kept until the next attempt replaces it. */
+export interface GuessFeedback {
+    valid: boolean;
+    reason?: string;
 }
 
 export interface CastMember {

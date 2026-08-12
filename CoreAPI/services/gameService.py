@@ -11,6 +11,10 @@ class GameService:
         return GameRepository.createGame(db)
 
     @staticmethod
+    def getGame(db: Session, game_id: int):
+        return GameRepository.getById(db, game_id)
+
+    @staticmethod
     def processGuess(db: Session, game_id: int, actor_id: int, movie_id: int):
         game = GameRepository.getById(db, game_id)
 

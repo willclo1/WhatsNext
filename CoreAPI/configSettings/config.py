@@ -11,3 +11,15 @@ if not TMDB_API_KEY:
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL missing")
+
+# Browsers block the deployed frontend unless its exact origin is listed here,
+# so this has to change per environment. Comma-separated, e.g.
+#   ALLOWED_ORIGINS=https://sixdegrees.pages.dev,https://sixdegrees.com
+# Unset means local development.
+_DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", _DEFAULT_ORIGINS).split(",")
+    if origin.strip()
+]

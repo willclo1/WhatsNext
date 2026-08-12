@@ -1,27 +1,23 @@
-import GamePage from "./components/GamePage";
-import ReelIcon from "./components/ReelIcon";
+import GamePage from "./features/game/GamePage";
 
 export default function App() {
     return (
-        <div className="min-h-screen bg-ink text-paper">
-            <header className="border-b border-line">
-                <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-6">
-                    <ReelIcon className="h-6 w-6 text-gold-soft" />
-
-                    <div>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted">
-                            The Marquee
-                        </p>
-                        <h1 className="font-display text-xl italic text-paper">
-                            Six Degrees
-                        </h1>
-                    </div>
-                </div>
+        <div className="mx-auto flex min-h-screen max-w-2xl flex-col px-5 sm:px-8">
+            <header className="border-b-[3px] border-ink py-5">
+                <h1 className="text-2xl leading-none text-ink sm:text-[1.75rem]">
+                    Six Degrees
+                </h1>
             </header>
 
-            <main className="mx-auto max-w-4xl px-6 py-10">
+            <main className="flex-1 py-10 sm:py-14">
                 <GamePage />
             </main>
+
+            <footer className="border-t border-rail py-5">
+                <p className="font-data text-label uppercase tracking-label text-slate">
+                    Film data and artwork from TMDB
+                </p>
+            </footer>
         </div>
     );
 }

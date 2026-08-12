@@ -1,0 +1,101 @@
+/*
+  ─────────────────────────────────────────────────────────────
+  SIX DEGREES — design tokens. Single source of truth.
+  Every colour, size, radius and duration used in a component
+  resolves to something declared here. No hex values in TSX.
+  ─────────────────────────────────────────────────────────────
+
+  Direction: a pocket transit map. The game is wayfinding — you plot a
+  route between two termini and every film is an interchange. Pale map
+  stock, ink diagram, two signal hues: one for the line you have built,
+  one for the terminus you have not reached.
+*/
+
+@theme {
+    /* ---- Type ---------------------------------------------------- */
+    /* Barlow is drawn from Californian public signage: the wayfinding
+       voice this diagram speaks in. Condensed heavy uppercase for
+       stations, regular for prose, mono for anything countable. */
+    --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --font-body: Barlow, ui-sans-serif, system-ui, sans-serif;
+    --font-data: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Two utility sizes carry every piece of signage text in the app:
+       `label` for the eyebrow above a station, `meta` for years and counts. */
+    --text-label: 0.625rem;
+    --text-label--line-height: 1.4;
+    --text-meta: 0.6875rem;
+    --text-meta--line-height: 1.4;
+
+    /* Letterspacing for that signage text — wide enough to read as a plate. */
+    --tracking-label: 0.18em;
+    --tracking-plate: 0.22em;
+
+    /* ---- Colour -------------------------------------------------- */
+    --color-paper: #edf0f4; /* map stock */
+    --color-card: #ffffff; /* raised stock */
+    --color-ink: #0d1520; /* all type, base rule */
+    --color-slate: #5a6a7d; /* secondary type — 4.8:1 on paper */
+    --color-rail: #c3cbd6; /* unbuilt track, dividers */
+    --color-rail-soft: #dde3ea; /* hairlines, inset fills */
+    --color-line-a: #0b69c7; /* signage blue — track you have travelled */
+    --color-line-b: #c81b33; /* signal red — the terminus ahead */
+
+    /* Tinted washes, for state without introducing new hues. */
+    --color-line-a-wash: #e4eef9;
+    --color-line-b-wash: #fae8eb;
+
+    /* ---- Geometry ------------------------------------------------ */
+    --radius-station: 2px; /* diagrammatic: almost square */
+    --radius-card: 6px;
+
+    /* Paper lift. Neutral ink only — a coloured glow would read as a screen,
+       and this design is printed stock. */
+    --shadow-poster: 0 1px 3px rgb(13 21 32 / 0.18);
+    --shadow-panel: 0 2px 10px rgb(13 21 32 / 0.07);
+    --shadow-menu: 0 8px 28px rgb(13 21 32 / 0.16);
+
+    /* Rail metrics. The whole diagram hangs off these three numbers. */
+    --rail-x: 1.125rem; /* centre of the rail from the left edge */
+    --rail-w: 3px; /* track weight */
+    --rail-node: 0.875rem; /* station marker diameter */
+    --rail-gutter: 3.25rem; /* where content starts */
+
+    /* ---- Motion -------------------------------------------------- */
+    /* One orchestrated moment: track extends, station arrives. */
+    --ease-track: cubic-bezier(0.22, 1, 0.36, 1);
+    --animate-station-in: station-in 0.5s var(--ease-track) both;
+    --animate-track-draw: track-draw 0.45s var(--ease-track) both;
+    --animate-rise: rise 0.4s var(--ease-track) both;
+}
+
+@keyframes station-in {
+    from {
+        opacity: 0;
+        transform: translateY(0.75rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes track-draw {
+    from {
+        transform: scaleY(0);
+    }
+    to {
+        transform: scaleY(1);
+    }
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(0.5rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

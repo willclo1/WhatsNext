@@ -24,6 +24,22 @@ async def create_game(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/{game_id}")
+async def get_game(game_id: int, db: Session = Depends(get_db)):
+    game = GameService.getGame(db, game_id)
+
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    return {
+        "game_id": game.id,
+        "start_actor_id": game.start_actor_id,
+        "target_actor_id": game.target_actor_id,
+        "current_actor_id": game.current_actor_id,
+        "status": game.status,
+    }
+
+
 @router.post("/{game_id}/guess")
 async def submit_guess(game_id: int, guess: GuessRequest, db: Session = Depends(get_db)):
     result = GameService.processGuess(

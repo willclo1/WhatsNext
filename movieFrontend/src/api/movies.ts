@@ -1,68 +1,23 @@
-import { API_URL } from "../config";
-import type { Movie, MovieSearchResponse } from "../types/movie";
+import { request } from "./http";
+import type { MovieSearchResponse } from "../types/movie";
 import type { CastMember } from "../types/game";
 
-async function getErrorMessage(response: Response): Promise<string> {
-    try {
-        const body = await response.json();
+/** How many films the search dropdown can show at once. */
+export const FILM_SEARCH_LIMIT = 12;
 
-        if (typeof body?.detail === "string") {
-            return body.detail;
-        }
-
-        if (Array.isArray(body?.detail)) {
-            return "The server rejected the request.";
-        }
-    } catch {
-        // Ignore JSON parsing errors.
-    }
-
-    return `Request failed with status ${response.status}`;
-}
-
-export async function searchMovies(
+export function searchFilms(
     query: string,
     signal?: AbortSignal,
 ): Promise<MovieSearchResponse> {
-    const url = new URL("/movie/search", API_URL);
-    url.searchParams.set("q", query);
-    url.searchParams.set("limit", "20");
-
-    const response = await fetch(url, { signal });
-
-    if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
-    }
-
-    return response.json();
+    return request<MovieSearchResponse>("/movie/search", {
+        signal,
+        query: { q: query, limit: FILM_SEARCH_LIMIT },
+    });
 }
 
-export async function getMovie(
-    tmdbId: number,
-    signal?: AbortSignal,
-): Promise<Movie> {
-    const url = new URL(`/movie/${tmdbId}`, API_URL);
-
-    const response = await fetch(url, { signal });
-
-    if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
-    }
-
-    return response.json();
-}
-
-export async function getMovieCast(
+export function getFilmCast(
     tmdbId: number,
     signal?: AbortSignal,
 ): Promise<CastMember[]> {
-    const url = new URL(`/movie/${tmdbId}/cast`, API_URL);
-
-    const response = await fetch(url, { signal });
-
-    if (!response.ok) {
-        throw new Error(await getErrorMessage(response));
-    }
-
-    return response.json();
+    return request<CastMember[]>(`/movie/${tmdbId}/cast`, { signal });
 }
