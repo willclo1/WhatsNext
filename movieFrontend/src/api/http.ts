@@ -60,7 +60,13 @@ export async function request<T>(
     path: string,
     { signal, method = "GET", body, query }: RequestOptions = {},
 ): Promise<T> {
-    const url = new URL(path, API_URL);
+    // Concatenate rather than `new URL(path, API_URL)`: resolving a root-
+    // relative path against a base discards the base's own path, so an
+    // API_URL of "https://host/api" would silently become "https://host".
+    // That matters when the API is reverse-proxied under a prefix.
+    const url = new URL(
+        `${API_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`,
+    );
 
     for (const [key, value] of Object.entries(query ?? {})) {
         url.searchParams.set(key, String(value));
