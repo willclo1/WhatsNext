@@ -1,3 +1,9 @@
+-- Idempotent schema migrations.
+--
+-- IF NOT EXISTS emits a NOTICE on every already-applied statement, which is
+-- expected here and only makes real problems harder to spot.
+SET client_min_messages = warning;
+
 -- Idempotent schema migrations. deploy.sh runs this on every deploy, so
 -- everything here must be safe to apply repeatedly.
 

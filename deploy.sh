@@ -213,10 +213,22 @@ step "Restarting API"
 ssh "$PI_HOST" "sudo systemctl restart sixdegrees-api" \
     || { rollback; die "systemctl restart failed"; }
 
+# Poll rather than sleep a fixed amount: a cold start varies, and a service
+# that never answers must fail here with an accurate message rather than
+# further down where the symptom looks like a data problem.
+healthy=false
 for _ in $(seq 1 15); do
     sleep 1
-    [[ "$(curl -fsS -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/dev/null)" == "200" ]] && break
+    if [[ "$(curl -fsS -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/dev/null)" == "200" ]]; then
+        healthy=true
+        break
+    fi
 done
+
+if ! $healthy; then
+    rollback
+    die "API did not come up within 15s - check: ssh $PI_HOST 'journalctl -u sixdegrees-api -n 40 --no-pager'"
+fi
 ok "service up"
 
 # ------------------------------------------------------------------ verify
