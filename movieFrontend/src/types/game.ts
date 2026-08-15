@@ -38,6 +38,7 @@ export interface GuessFeedback {
 export interface CastMember {
     actor_id: number;
     name: string;
+    profile_path: string | null;
     character: string | null;
     cast_order: number;
 }

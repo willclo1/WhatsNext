@@ -34,11 +34,22 @@ class GameService:
         if actor_id in used_actors or movie_id in used_movies:
             return {"valid": False, "reason": "repeat"}
 
-        won = game.target_actor_id in cast_ids
+        # You win by *moving to* the target, not by finding a film they happen
+        # to be in. The old check (`target in cast_ids`) declared a win even
+        # when the player picked a different co-star, which left the recorded
+        # path ending somewhere other than the target.
+        won = actor_id == game.target_actor_id
 
         GameRepository.recordGuess(
             db, game.id, actor_id, movie_id, step_number=len(used_actors) + 1
         )
+
+        if won:
+            # Persist the outcome. Without this the column never leaves
+            # "in_progress", and the only way to count completions is to
+            # check whether some step happens to match the target.
+            game.status = "won"
+            db.commit()
 
         return {"valid": True, "won": won, "game_id": game.id}
 

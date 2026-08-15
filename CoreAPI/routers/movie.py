@@ -24,6 +24,7 @@ async def get_movie_cast(tmdb_id: int, db: Session = Depends(get_db)):
         {
             "actor_id": r.actor_id,
             "name": r.name,
+            "profile_path": r.profile_path,
             "character": r.character,
             "cast_order": r.cast_order,
         }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { CastMember } from "../../types/game";
+import PersonPhoto from "../../components/PersonPhoto";
 
 interface CastListProps {
     cast: CastMember[];
@@ -65,8 +66,19 @@ export default function CastList({
                                         ? `${member.name} is already on your route`
                                         : `Travel with ${member.name}`
                                 }
-                                className="group flex w-full items-baseline gap-2 border-b border-rail-soft py-2 text-left transition-colors last:border-b-0 enabled:hover:bg-line-a-wash disabled:cursor-not-allowed"
+                                className="group flex w-full items-center gap-2.5 border-b border-rail-soft py-2 text-left transition-colors last:border-b-0 enabled:hover:bg-line-a-wash disabled:cursor-not-allowed"
                             >
+                                <span
+                                    className={`h-10 w-8 shrink-0 overflow-hidden rounded-station bg-rail-soft text-sm ${
+                                        visited ? "opacity-40 grayscale" : ""
+                                    }`}
+                                >
+                                    <PersonPhoto
+                                        path={member.profile_path}
+                                        name={member.name}
+                                    />
+                                </span>
+
                                 <span
                                     className={`font-display text-lg uppercase leading-tight tracking-tight ${
                                         visited

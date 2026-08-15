@@ -182,6 +182,7 @@ export function useGame() {
                 setCurrentActor({
                     actor_id: member.actor_id,
                     name: member.name,
+                    profile_path: member.profile_path,
                 });
                 setSelectedFilm(null);
                 setCast([]);

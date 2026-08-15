@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Actor } from "../../types/actor";
 import type { GameStep } from "../../types/game";
 import Poster from "../../components/Poster";
+import PersonPhoto from "../../components/PersonPhoto";
 
 /*
   The signature element.
@@ -93,16 +94,19 @@ function StationName({
     name,
     label,
     tone = "ink",
+    profilePath,
 }: {
     name: string;
     label?: string;
     tone?: "ink" | "a" | "b";
+    /** Only the two termini carry a portrait — see the note at the call site. */
+    profilePath?: string | null;
 }) {
     const nameTone =
         tone === "a" ? "text-line-a" : tone === "b" ? "text-line-b" : "text-ink";
 
-    return (
-        <div className="-mt-1">
+    const text = (
+        <div className="-mt-1 min-w-0">
             {label && (
                 <p className="font-data text-label uppercase leading-normal tracking-label text-slate">
                     {label}
@@ -113,6 +117,23 @@ function StationName({
             >
                 {name}
             </p>
+        </div>
+    );
+
+    if (profilePath === undefined) {
+        return text;
+    }
+
+    return (
+        <div className="flex items-center gap-3">
+            <span
+                className={`h-14 w-11 shrink-0 overflow-hidden rounded-station bg-rail-soft text-lg shadow-poster ring-1 ${
+                    tone === "b" ? "ring-line-b/40" : "ring-line-a/40"
+                }`}
+            >
+                <PersonPhoto path={profilePath} name={name} />
+            </span>
+            {text}
         </div>
     );
 }
@@ -173,6 +194,7 @@ export default function RouteMap({
                     name={startActor.name}
                     label={atStart && !complete ? "Start · you are here" : "Start"}
                     tone="a"
+                    profilePath={startActor.profile_path}
                 />
             </Row>
 
@@ -232,7 +254,12 @@ export default function RouteMap({
                     >
                         <TerminusRing />
                     </span>
-                    <StationName name={targetActor.name} label="Target" tone="b" />
+                    <StationName
+                        name={targetActor.name}
+                        label="Target"
+                        tone="b"
+                        profilePath={targetActor.profile_path}
+                    />
                 </li>
             )}
 

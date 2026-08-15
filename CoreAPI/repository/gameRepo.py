@@ -14,87 +14,44 @@ class GameRepository:
 
     def createGame(db: Session):
 
-        MIN_HOPS = 2
+        # Both endpoints come from terminus_pairs, which is precomputed from
+        # actors flagged is_terminus (lead billing in widely-seen films) and
+        # holds only pairs whose shortest path is 2 or 3 hops. That replaces
+        # the old random walk, which drew from every actor in the table --
+        # fine when there were 500, but the table now holds 14k, most of them
+        # character actors nobody could name, let alone aim for.
+        #
+        # Excluding 1-hop pairs matters too: direct co-stars give the answer
+        # away on the first search.
 
-        MAX_HOPS = 6
+        pair = db.execute(
 
-        # Pick how difficult this game will be.
+            text(
+                """
+                SELECT start_actor_id, target_actor_id
+                FROM terminus_pairs
+                ORDER BY random()
+                LIMIT 1
+                """
+            )
 
-        hop_count = random.randint(MIN_HOPS, MAX_HOPS)
+        ).first()
 
-        # Pick a random starting actor.
+        if pair is None:
 
-        start_actor_id = db.execute(
+            raise RuntimeError(
+                "terminus_pairs is empty - run the pair builder before "
+                "serving games."
+            )
 
-            select(Actors.actor_id)
+        start_actor_id, target_actor_id = pair
 
-            .order_by(func.random())
+        # Pairs are stored once, with the lower actor_id first. Flipping at
+        # random keeps players from noticing the ordering.
 
-            .limit(1)
+        if random.random() < 0.5:
 
-        ).scalar_one()
-
-        current_actor_id = start_actor_id
-
-        visited_actors = {start_actor_id}
-
-        for _ in range(hop_count):
-
-            # Pick a random movie that the current actor was in.
-
-            movie_id = db.execute(
-
-                select(MovieCast.movie_id)
-
-                .where(MovieCast.actor_id == current_actor_id)
-
-                .order_by(func.random())
-
-                .limit(1)
-
-            ).scalar_one_or_none()
-
-            if movie_id is None:
-
-                raise ValueError(
-
-                    f"Actor {current_actor_id} has no movies."
-
-                )
-
-            # Pick another actor from that movie.
-
-            next_actor_id = db.execute(
-
-                select(MovieCast.actor_id)
-
-                .where(
-
-                    MovieCast.movie_id == movie_id,
-
-                    MovieCast.actor_id != current_actor_id,
-
-                    ~MovieCast.actor_id.in_(visited_actors),
-
-                )
-
-                .order_by(func.random())
-
-                .limit(1)
-
-            ).scalar_one_or_none()
-
-            if next_actor_id is None:
-
-                # We hit a dead end. Try creating another game.
-
-                return GameRepository.createGame(db)
-
-            visited_actors.add(next_actor_id)
-
-            current_actor_id = next_actor_id
-
-        target_actor_id = current_actor_id
+            start_actor_id, target_actor_id = target_actor_id, start_actor_id
 
         new_game = Game(
 

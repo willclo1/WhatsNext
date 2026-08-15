@@ -16,6 +16,7 @@ class MovieCastRepository:
             select(
                 Actors.actor_id,
                 Actors.name,
+                Actors.profile_path,
                 MovieCast.character,
                 MovieCast.cast_order,
             )
