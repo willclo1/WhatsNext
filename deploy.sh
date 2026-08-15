@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 #
-# Deploys Six Degrees to the Raspberry Pi. Run from the repo root on the Mac.
+# Deploys Six Degrees to the Raspberry Pi. Run from anywhere; paths resolve
+# relative to the repo.
 #
-#   ./deploy.sh              code only (frontend + API), ~20s
-#   ./deploy.sh --with-data  also pushes actors / movie_cast / terminus_pairs
+#   ./deploy.sh                 code only (frontend + API)
+#   ./deploy.sh --with-data     also push actors / movie_cast / terminus_pairs
+#   ./deploy.sh --check         preflight only, change nothing
+#   ./deploy.sh --help
 #
-# Code-only is the normal path. Use --with-data after re-running
-# movieDBBuild/rebuild_cast.py, or after regenerating terminus_pairs.
+# Safety properties worth knowing:
 #
-# Game history is preserved: actors is upserted through a staging table rather
-# than replaced, because games.start_actor_id and game_steps.actor_id have
-# foreign keys into it.
+#   * The previous release is snapshotted on the Pi before anything is
+#     overwritten, and restored automatically if the new one fails its health
+#     check. A broken deploy self-heals rather than leaving the site down.
+#   * Schema migrations run before the code that depends on them.
+#   * actors is upserted through a staging table rather than replaced, because
+#     games and game_steps hold foreign keys into it. Game history survives.
+#   * --with-data refuses to run if the local data is empty, so a half-built
+#     database cannot overwrite a working one.
 
 set -euo pipefail
 
@@ -24,78 +31,169 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 WITH_DATA=false
-[[ "${1:-}" == "--with-data" ]] && WITH_DATA=true
+CHECK_ONLY=false
 
-step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
+for arg in "$@"; do
+    case "$arg" in
+        --with-data) WITH_DATA=true ;;
+        --check)     CHECK_ONLY=true ;;
+        -h|--help)   awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+        *)           echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+    esac
+done
 
-step "Building frontend"
-# VITE_* values are baked in at build time, so the production API URL has to be
-# set here rather than on the Pi.
-(
-  cd movieFrontend
-  VITE_API_URL="$SITE/api" \
-  VITE_TMDB_IMAGE_URL="https://image.tmdb.org/t/p" \
-    npm run build
-)
+if [[ -t 1 ]]; then
+    BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'; OFF=$'\033[0m'
+else
+    BOLD=""; DIM=""; RED=""; GREEN=""; OFF=""
+fi
 
-step "Shipping frontend"
-rsync -az --delete movieFrontend/dist/ "$PI_HOST:$REMOTE/movieFrontend/dist/"
+STARTED=$SECONDS
+step() { printf '\n%s==> %s%s\n' "$BOLD" "$1" "$OFF"; }
+ok()   { printf '    %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
+die()  { printf '\n%sdeploy failed:%s %s\n' "$RED" "$OFF" "$1" >&2; exit 1; }
 
-step "Shipping API"
-rsync -az --delete \
-  --exclude venv --exclude __pycache__ --exclude '.env' --exclude '*.pyc' \
-  CoreAPI/ "$PI_HOST:$REMOTE/CoreAPI/"
+# ---------------------------------------------------------------- preflight
 
-step "Syncing Python dependencies"
-ssh "$PI_HOST" "$REMOTE/CoreAPI/venv/bin/pip install -q -r $REMOTE/CoreAPI/requirements.txt"
+step "Preflight"
+
+command -v npm    >/dev/null || die "npm not found"
+command -v rsync  >/dev/null || die "rsync not found"
+
+ssh -o BatchMode=yes -o ConnectTimeout=10 "$PI_HOST" true 2>/dev/null \
+    || die "cannot reach $PI_HOST over ssh"
+ok "$PI_HOST reachable"
+
+ssh "$PI_HOST" "test -d $REMOTE/CoreAPI/venv" \
+    || die "$REMOTE/CoreAPI/venv missing on the Pi - not a deployed install"
+ok "remote install present"
 
 if $WITH_DATA; then
-  step "Exporting data"
-  TMP=$(mktemp -d)
-  trap 'rm -rf "$TMP"' EXIT
+    command -v psql >/dev/null || die "psql not found (needed for --with-data)"
 
-  psql -d "$LOCAL_DB" -q -c "\copy (SELECT actor_id,name,profile_path,known_for_department,popularity,headline_count,costar_degree,is_terminus FROM actors) TO '$TMP/actors.csv' CSV"
-  psql -d "$LOCAL_DB" -q -c "\copy (SELECT movie_id,actor_id,character,cast_order FROM movie_cast) TO '$TMP/movie_cast.csv' CSV"
-  psql -d "$LOCAL_DB" -q -c "\copy (SELECT start_actor_id,target_actor_id,hops FROM terminus_pairs) TO '$TMP/terminus_pairs.csv' CSV"
+    read -r n_actors n_cast n_pairs <<<"$(psql -d "$LOCAL_DB" -tAF' ' -c "
+        SELECT (SELECT count(*) FROM actors),
+               (SELECT count(*) FROM movie_cast),
+               (SELECT count(*) FROM terminus_pairs)" 2>/dev/null)" \
+        || die "cannot read local database '$LOCAL_DB'"
 
-  step "Uploading data"
-  scp -q "$TMP"/*.csv "$PI_HOST:/tmp/"
+    # Shipping an empty table would take the live game down, and the failure
+    # would only surface when a player tried to start a route.
+    [[ "${n_pairs:-0}" -gt 0 ]] \
+        || die "terminus_pairs is empty locally - run movieDBBuild/build_graph.py first"
+    [[ "${n_cast:-0}" -gt 0 ]] \
+        || die "movie_cast is empty locally - run movieDBBuild/rebuild_cast.py first"
 
-  step "Loading data"
-  ssh "$PI_HOST" "psql '$REMOTE_DB' -v ON_ERROR_STOP=1 -q" <<'SQL'
-ALTER TABLE actors
-    ADD COLUMN IF NOT EXISTS profile_path         varchar(255),
-    ADD COLUMN IF NOT EXISTS known_for_department varchar(50),
-    ADD COLUMN IF NOT EXISTS popularity           double precision,
-    ADD COLUMN IF NOT EXISTS headline_count       integer NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS costar_degree        integer NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS is_terminus          boolean NOT NULL DEFAULT false;
+    ok "local data: $n_actors actors, $n_cast cast links, $n_pairs pairs"
+fi
 
-CREATE TABLE IF NOT EXISTS terminus_pairs (
-    start_actor_id  int      NOT NULL,
-    target_actor_id int      NOT NULL,
-    hops            smallint NOT NULL,
-    PRIMARY KEY (start_actor_id, target_actor_id)
-);
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    printf '    %suncommitted changes in the working tree%s\n' "$DIM" "$OFF"
+fi
 
+if $CHECK_ONLY; then
+    printf '\n%sPreflight passed.%s Nothing was changed.\n' "$BOLD" "$OFF"
+    exit 0
+fi
+
+# ------------------------------------------------------------------- build
+
+step "Building frontend"
+# VITE_* values are inlined at build time, so the production API URL has to be
+# set here — the Pi never reads them.
+(
+    cd movieFrontend
+    VITE_API_URL="$SITE/api" \
+    VITE_TMDB_IMAGE_URL="https://image.tmdb.org/t/p" \
+        npm run build >/dev/null
+) || die "frontend build failed (run 'npm run build' in movieFrontend to see why)"
+ok "$(find movieFrontend/dist -type f | wc -l | tr -d ' ') files"
+
+# ---------------------------------------------------------------- snapshot
+
+step "Snapshotting current release"
+ssh "$PI_HOST" "
+    set -e
+    rm -rf $REMOTE/.rollback
+    mkdir -p $REMOTE/.rollback
+    cp -a $REMOTE/CoreAPI $REMOTE/.rollback/CoreAPI
+    cp -a $REMOTE/movieFrontend/dist $REMOTE/.rollback/dist
+" || die "could not snapshot the current release"
+ok "rollback point saved"
+
+rollback() {
+    printf '\n%srolling back%s\n' "$RED" "$OFF" >&2
+    ssh "$PI_HOST" "
+        set -e
+        rm -rf $REMOTE/CoreAPI $REMOTE/movieFrontend/dist
+        cp -a $REMOTE/.rollback/CoreAPI $REMOTE/CoreAPI
+        cp -a $REMOTE/.rollback/dist $REMOTE/movieFrontend/dist
+        sudo systemctl restart sixdegrees-api
+    " >/dev/null 2>&1 || printf '%srollback itself failed - the Pi needs a look%s\n' "$RED" "$OFF" >&2
+}
+
+# -------------------------------------------------------------------- ship
+
+step "Shipping code"
+rsync -az --delete movieFrontend/dist/ "$PI_HOST:$REMOTE/movieFrontend/dist/"
+rsync -az --delete \
+    --exclude venv --exclude __pycache__ --exclude '.env' --exclude '*.pyc' \
+    CoreAPI/ "$PI_HOST:$REMOTE/CoreAPI/"
+ok "frontend and API in place"
+
+step "Applying schema migrations"
+# Idempotent, and always before the restart: code must never reach a Pi whose
+# schema predates it.
+ssh "$PI_HOST" "psql '$REMOTE_DB' -q -v ON_ERROR_STOP=1" < CoreAPI/schema.sql \
+    || { rollback; die "schema migration failed"; }
+ok "schema current"
+
+step "Syncing Python dependencies"
+ssh "$PI_HOST" "$REMOTE/CoreAPI/venv/bin/pip install -q -r $REMOTE/CoreAPI/requirements.txt" \
+    || { rollback; die "pip install failed"; }
+ok "dependencies current"
+
+# -------------------------------------------------------------------- data
+
+if $WITH_DATA; then
+    step "Backing up remote data"
+    ssh "$PI_HOST" "pg_dump '$REMOTE_DB' -Fc -f /tmp/predeploy.dump" \
+        || die "remote backup failed - refusing to overwrite data"
+    ok "remote backup at /tmp/predeploy.dump"
+
+    step "Exporting local data"
+    TMP="$(mktemp -d)"
+    trap 'rm -rf "$TMP"' EXIT
+
+    psql -d "$LOCAL_DB" -q -c "\copy (SELECT actor_id,name,profile_path,known_for_department,popularity,headline_count,costar_degree,is_terminus FROM actors) TO '$TMP/actors.csv' CSV"
+    psql -d "$LOCAL_DB" -q -c "\copy (SELECT movie_id,actor_id,character,cast_order FROM movie_cast) TO '$TMP/movie_cast.csv' CSV"
+    psql -d "$LOCAL_DB" -q -c "\copy (SELECT start_actor_id,target_actor_id,hops FROM terminus_pairs) TO '$TMP/terminus_pairs.csv' CSV"
+    ok "$(du -sh "$TMP" | cut -f1) exported"
+
+    step "Loading data"
+    scp -q "$TMP"/*.csv "$PI_HOST:/tmp/"
+
+    # One transaction: either the whole dataset lands or none of it does.
+    ssh "$PI_HOST" "psql '$REMOTE_DB' -v ON_ERROR_STOP=1 -q" <<'SQL' \
+        || { rollback; die "data load failed - restore with: pg_restore -c -d DB /tmp/predeploy.dump"; }
 BEGIN;
 
--- Staging, so existing actor rows referenced by games survive the reload.
+-- Staging, so actor rows referenced by existing games survive the reload.
 CREATE TEMP TABLE actors_new (LIKE actors) ON COMMIT DROP;
 \copy actors_new (actor_id,name,profile_path,known_for_department,popularity,headline_count,costar_degree,is_terminus) FROM '/tmp/actors.csv' CSV
 
 INSERT INTO actors (actor_id,name,profile_path,known_for_department,popularity,headline_count,costar_degree,is_terminus)
 SELECT actor_id,name,profile_path,known_for_department,popularity,headline_count,costar_degree,is_terminus FROM actors_new
 ON CONFLICT (actor_id) DO UPDATE SET
-    name = EXCLUDED.name,
-    profile_path = EXCLUDED.profile_path,
+    name                 = EXCLUDED.name,
+    profile_path         = EXCLUDED.profile_path,
     known_for_department = EXCLUDED.known_for_department,
-    popularity = EXCLUDED.popularity,
-    headline_count = EXCLUDED.headline_count,
-    costar_degree = EXCLUDED.costar_degree,
-    is_terminus = EXCLUDED.is_terminus;
+    popularity           = EXCLUDED.popularity,
+    headline_count       = EXCLUDED.headline_count,
+    costar_degree        = EXCLUDED.costar_degree,
+    is_terminus          = EXCLUDED.is_terminus;
 
--- Both are fully derived, so replacing wholesale is safer than reconciling.
+-- Both are fully derived, so replacing wholesale beats reconciling.
 TRUNCATE movie_cast;
 \copy movie_cast (movie_id,actor_id,character,cast_order) FROM '/tmp/movie_cast.csv' CSV
 
@@ -103,31 +201,51 @@ TRUNCATE terminus_pairs;
 \copy terminus_pairs (start_actor_id,target_actor_id,hops) FROM '/tmp/terminus_pairs.csv' CSV
 
 COMMIT;
-
-SELECT 'actors' t, count(*) FROM actors
-UNION ALL SELECT 'movie_cast', count(*) FROM movie_cast
-UNION ALL SELECT 'terminus_pairs', count(*) FROM terminus_pairs;
 SQL
 
-  ssh "$PI_HOST" "rm -f /tmp/actors.csv /tmp/movie_cast.csv /tmp/terminus_pairs.csv"
+    ssh "$PI_HOST" "rm -f /tmp/actors.csv /tmp/movie_cast.csv /tmp/terminus_pairs.csv"
+    ok "data loaded"
 fi
+
+# ----------------------------------------------------------------- restart
 
 step "Restarting API"
-ssh "$PI_HOST" "sudo systemctl restart sixdegrees-api"
-sleep 3
+ssh "$PI_HOST" "sudo systemctl restart sixdegrees-api" \
+    || { rollback; die "systemctl restart failed"; }
+
+for _ in $(seq 1 15); do
+    sleep 1
+    [[ "$(curl -fsS -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/dev/null)" == "200" ]] && break
+done
+ok "service up"
+
+# ------------------------------------------------------------------ verify
 
 step "Verifying"
-code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE")
-api=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/api/health")
-echo "site $code   api $api"
 
-if [[ "$code" != "200" || "$api" != "200" ]]; then
-  echo "FAILED - check: ssh $PI_HOST 'journalctl -u sixdegrees-api -n 30 --no-pager'" >&2
-  exit 1
-fi
+site=$(curl -s -o /dev/null -w '%{http_code}' "$SITE")
+[[ "$site" == "200" ]] || { rollback; die "site returned $site"; }
+ok "site 200"
 
-# A game can only be created if terminus_pairs is populated, so this is the
-# check that actually proves data and code agree.
-curl -s -X POST "$SITE/api/games" | head -c 160
-echo
-printf '\n\033[1mDeployed: %s\033[0m\n' "$SITE"
+# A full round trip: creating a game proves terminus_pairs is populated, and
+# the token check proves code and schema agree. Health alone proves neither.
+game=$(curl -fsS -X POST "$SITE/api/games" 2>/dev/null) \
+    || { rollback; die "could not create a game - is terminus_pairs populated?"; }
+
+game_id=$(printf '%s' "$game" | sed -n 's/.*"game_id":\([0-9]*\).*/\1/p')
+token=$(printf '%s'  "$game" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+
+[[ -n "$game_id" && -n "$token" ]] || { rollback; die "game response missing id or token"; }
+ok "game $game_id created with a token"
+
+denied=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$SITE/api/games/$game_id")
+[[ "$denied" == "403" ]] || { rollback; die "ownership check is not enforced (got $denied)"; }
+ok "unauthorised delete refused"
+
+curl -s -o /dev/null -X DELETE "$SITE/api/games/$game_id" -H "X-Game-Token: $token"
+ok "test game cleaned up"
+
+ssh "$PI_HOST" "rm -rf $REMOTE/.rollback"
+
+printf '\n%sDeployed in %ss%s  %s\n' \
+    "$BOLD" "$((SECONDS - STARTED))" "$OFF" "$SITE"

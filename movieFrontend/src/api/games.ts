@@ -18,6 +18,7 @@ export function getGameHistory(
 
 export function submitGuess(
     gameId: number,
+    token: string,
     actorId: number,
     movieId: number,
     signal?: AbortSignal,
@@ -25,6 +26,19 @@ export function submitGuess(
     return request<GuessResult>(`/games/${gameId}/guess`, {
         method: "POST",
         body: { actor_id: actorId, movie_id: movieId },
+        token,
+        signal,
+    });
+}
+
+export function leaveGame(
+    gameId: number,
+    token: string,
+    signal?: AbortSignal,
+): Promise<void> {
+    return request<void>(`/games/${gameId}`, {
+        method: "DELETE",
+        token,
         signal,
     });
 }

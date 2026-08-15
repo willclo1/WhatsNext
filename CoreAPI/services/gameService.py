@@ -54,6 +54,12 @@ class GameService:
         return {"valid": True, "won": won, "game_id": game.id}
 
     @staticmethod
+    def leaveGame(db, game_id: int) -> bool:
+        """Abandoning a route discards it -- an unfinished game is not a
+        record of anything, and leaving them behind just grows the table."""
+        return GameRepository.deleteGame(db, game_id)
+
+    @staticmethod
     def getGame(db, game_id: int):
         return GameRepository.getById(db, game_id)
     

@@ -105,3 +105,27 @@ class GameRepository:
     @staticmethod
     def getById(db: Session, game_id: int) -> Game | None:
         return db.query(Game).filter(Game.id == game_id).first()
+
+    @staticmethod
+    def deleteGame(db: Session, game_id: int) -> bool:
+        """
+        Removes an abandoned game and its steps. Returns False if it was
+        already gone, so a double-click doesn't read as an error.
+
+        Steps go first: game_steps.game_id has a plain foreign key with no
+        ON DELETE CASCADE, so deleting the parent row on its own fails.
+        """
+
+        game = GameRepository.getById(db, game_id)
+
+        if game is None:
+            return False
+
+        db.query(GameStep).filter(GameStep.game_id == game_id).delete(
+            synchronize_session=False
+        )
+
+        db.delete(game)
+        db.commit()
+
+        return True

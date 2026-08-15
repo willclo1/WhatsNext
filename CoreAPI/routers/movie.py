@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from models.response.searchList import MovieSearchResponse
 from models.response.movieResponse import MovieResponse
 from configSettings.database import get_db
@@ -14,7 +14,11 @@ router = APIRouter(
 
 # name, id , pic
 @router.get("/search", response_model=MovieSearchResponse)
-async def search_movie(q: str, limit: int = 10, db: Session = Depends(get_db)):
+async def search_movie(
+    q: str = Query(min_length=1, max_length=100),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
     return MovieService.search_movie(db, q, limit)
 
 @router.get("/{tmdb_id}/cast")

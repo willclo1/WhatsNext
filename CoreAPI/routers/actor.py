@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from configSettings.database import get_db
 from services.actorService import ActorService
@@ -6,7 +6,11 @@ from services.actorService import ActorService
 router = APIRouter(prefix="/actors", tags=["actors"])
 
 @router.get("/search")
-async def search_actors(q: str, limit: int = 8, db: Session = Depends(get_db)):
+async def search_actors(
+    q: str = Query(min_length=1, max_length=100),
+    limit: int = Query(8, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
     results = ActorService.searchActors(db, q, limit)
     return [
         {"actor_id": a.actor_id, "name": a.name, "profile_path": a.profile_path}

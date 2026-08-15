@@ -50,15 +50,17 @@ async function readError(response: Response): Promise<string> {
 
 export interface RequestOptions {
     signal?: AbortSignal;
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "DELETE";
     body?: unknown;
     query?: Record<string, string | number>;
+    /** Game ownership token, sent as X-Game-Token. */
+    token?: string;
 }
 
 /** Single entry point for every call to the game API. */
 export async function request<T>(
     path: string,
-    { signal, method = "GET", body, query }: RequestOptions = {},
+    { signal, method = "GET", body, query, token }: RequestOptions = {},
 ): Promise<T> {
     // Concatenate rather than `new URL(path, API_URL)`: resolving a root-
     // relative path against a base discards the base's own path, so an
@@ -78,7 +80,10 @@ export async function request<T>(
         response = await fetch(url, {
             method,
             signal,
-            headers: body ? { "Content-Type": "application/json" } : undefined,
+            headers: {
+                ...(body ? { "Content-Type": "application/json" } : {}),
+                ...(token ? { "X-Game-Token": token } : {}),
+            },
             body: body ? JSON.stringify(body) : undefined,
         });
     } catch (error) {
@@ -96,6 +101,12 @@ export async function request<T>(
 
     if (!response.ok) {
         throw new ApiError(await readError(response), response.status);
+    }
+
+    // 204 carries no body, so parsing it as JSON would throw. Callers that
+    // expect nothing back (DELETE) type the result as void.
+    if (response.status === 204) {
+        return undefined as T;
     }
 
     return response.json() as Promise<T>;

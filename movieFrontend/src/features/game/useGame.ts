@@ -4,6 +4,7 @@ import {
     getGame,
     getGameHistory,
     submitGuess,
+    leaveGame as leaveGameApi,
 } from "../../api/games";
 import { getActor } from "../../api/actors";
 import { getFilmCast } from "../../api/movies";
@@ -12,7 +13,37 @@ import type { Actor } from "../../types/actor";
 import type { CastMember, Game, GameStep, GuessFeedback } from "../../types/game";
 import type { Movie } from "../../types/movie";
 
-const STORAGE_KEY = "sixdegrees.gameId";
+const STORAGE_KEY = "sixdegrees.game";
+const LEGACY_KEY = "sixdegrees.gameId";
+
+interface SavedGame {
+    id: number;
+    token: string;
+}
+
+/**
+ * Reads the resumable game. The token is stored with the id because without
+ * it the server rejects every state-changing call, so a saved id alone is
+ * worthless — including anything left by the pre-token version of this app.
+ */
+function readSaved(): SavedGame | null {
+    window.localStorage.removeItem(LEGACY_KEY);
+
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+
+    try {
+        const parsed = JSON.parse(raw) as Partial<SavedGame>;
+        if (typeof parsed.id === "number" && typeof parsed.token === "string") {
+            return { id: parsed.id, token: parsed.token };
+        }
+    } catch {
+        // Corrupt or legacy value; fall through and start clean.
+    }
+
+    window.localStorage.removeItem(STORAGE_KEY);
+    return null;
+}
 
 export type Phase = "idle" | "loading" | "playing" | "won" | "error";
 
@@ -41,7 +72,8 @@ export function useGame() {
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState<GuessFeedback | null>(null);
 
-    const resumeGame = useCallback(async (gameId: number) => {
+    const resumeGame = useCallback(async (saved: SavedGame) => {
+        const gameId = saved.id;
         setPhase("loading");
         setError(null);
 
@@ -57,7 +89,8 @@ export function useGame() {
                 getActor(loaded.current_actor_id),
             ]);
 
-            setGame(loaded);
+            // getGame never returns the token, so carry the stored one forward.
+            setGame({ ...loaded, token: saved.token });
             setStartActor(start);
             setTargetActor(target);
             setCurrentActor(current);
@@ -84,11 +117,10 @@ export function useGame() {
     }, []);
 
     useEffect(() => {
-        const savedId = window.localStorage.getItem(STORAGE_KEY);
-        const parsed = savedId ? Number(savedId) : NaN;
+        const saved = readSaved();
 
-        if (Number.isFinite(parsed)) {
-            resumeGame(parsed);
+        if (saved) {
+            resumeGame(saved);
         }
     }, [resumeGame]);
 
@@ -108,7 +140,10 @@ export function useGame() {
                 getActor(created.target_actor_id),
             ]);
 
-            window.localStorage.setItem(STORAGE_KEY, String(created.game_id));
+            window.localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify({ id: created.game_id, token: created.token }),
+            );
 
             setGame(created);
             setStartActor(start);
@@ -159,6 +194,7 @@ export function useGame() {
             try {
                 const result = await submitGuess(
                     game.game_id,
+                    game.token ?? "",
                     member.actor_id,
                     selectedFilm.tmdb_id,
                 );
@@ -208,6 +244,13 @@ export function useGame() {
     );
 
     const leaveGame = useCallback(() => {
+        // Discard the abandoned game server-side. Deliberately not awaited:
+        // the player asked to leave, so the UI shouldn't wait on a network
+        // round trip, and a failed cleanup costs nothing but a stale row.
+        if (game) {
+            void leaveGameApi(game.game_id, game.token ?? "").catch(() => {});
+        }
+
         window.localStorage.removeItem(STORAGE_KEY);
         setGame(null);
         setStartActor(null);
@@ -219,7 +262,7 @@ export function useGame() {
         setFeedback(null);
         setError(null);
         setPhase("idle");
-    }, []);
+    }, [game]);
 
     return {
         phase,

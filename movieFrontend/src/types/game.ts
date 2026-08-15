@@ -2,6 +2,11 @@ export type GameStatus = "in_progress" | "won" | "abandoned";
 
 export interface Game {
     game_id: number;
+    /**
+     * Ownership token. Only present on the create response — reads never
+     * return it. Required on every state-changing call.
+     */
+    token?: string;
     start_actor_id: number;
     target_actor_id: number;
     current_actor_id: number;
