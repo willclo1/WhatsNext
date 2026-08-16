@@ -5,8 +5,12 @@
 #
 #   ./deploy.sh                 code only (frontend + API)
 #   ./deploy.sh --with-data     also push actors / movie_cast / terminus_pairs
+#   ./deploy.sh --with-server   also rebuild and install the C++ web server
 #   ./deploy.sh --check         preflight only, change nothing
 #   ./deploy.sh --help
+#
+# The C++ server reads static files from disk on every request, so a frontend
+# deploy needs no server restart -- only --with-server touches it.
 #
 # Safety properties worth knowing:
 #
@@ -18,6 +22,9 @@
 #     games and game_steps hold foreign keys into it. Game history survives.
 #   * --with-data refuses to run if the local data is empty, so a half-built
 #     database cannot overwrite a working one.
+#   * --with-server builds on the Pi and only swaps the binary in once the
+#     build and its path tests pass, so a compile error never reaches
+#     production.
 
 set -euo pipefail
 
@@ -27,15 +34,21 @@ SITE="${SITE:-https://sixdegreesofkevin123.duckdns.org}"
 LOCAL_DB="${LOCAL_DB:-movies}"
 REMOTE_DB="${REMOTE_DB:-postgresql://sixdegrees:sixdegrees@127.0.0.1/movies}"
 
+# The web server lives in its own repository, beside this one by default.
+SERVER_SRC="${SERVER_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/C-Server}"
+SERVER_REMOTE="${SERVER_REMOTE:-/opt/cserver}"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 WITH_DATA=false
+WITH_SERVER=false
 CHECK_ONLY=false
 
 for arg in "$@"; do
     case "$arg" in
-        --with-data) WITH_DATA=true ;;
+        --with-data)   WITH_DATA=true ;;
+        --with-server) WITH_SERVER=true ;;
         --check)     CHECK_ONLY=true ;;
         -h|--help)   awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
         *)           echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
@@ -87,6 +100,19 @@ if $WITH_DATA; then
     ok "local data: $n_actors actors, $n_cast cast links, $n_pairs pairs"
 fi
 
+if $WITH_SERVER; then
+    [[ -d "$SERVER_SRC" ]] \
+        || die "C++ server source not found at $SERVER_SRC (set SERVER_SRC)"
+
+    [[ -f "$SERVER_SRC/Makefile" ]] \
+        || die "$SERVER_SRC has no Makefile"
+
+    ssh "$PI_HOST" "test -f /etc/cserver/sixdegrees.conf" \
+        || die "the Pi has no /etc/cserver/sixdegrees.conf - server not installed yet"
+
+    ok "server source at $SERVER_SRC"
+fi
+
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
     printf '    %suncommitted changes in the working tree%s\n' "$DIM" "$OFF"
 fi
@@ -118,6 +144,8 @@ ssh "$PI_HOST" "
     mkdir -p $REMOTE/.rollback
     cp -a $REMOTE/CoreAPI $REMOTE/.rollback/CoreAPI
     cp -a $REMOTE/movieFrontend/dist $REMOTE/.rollback/dist
+    # The web server binary is owned by root, so copying it needs sudo.
+    sudo cp -a $SERVER_REMOTE/server $REMOTE/.rollback/server 2>/dev/null || true
 " || die "could not snapshot the current release"
 ok "rollback point saved"
 
@@ -128,6 +156,14 @@ rollback() {
         rm -rf $REMOTE/CoreAPI $REMOTE/movieFrontend/dist
         cp -a $REMOTE/.rollback/CoreAPI $REMOTE/CoreAPI
         cp -a $REMOTE/.rollback/dist $REMOTE/movieFrontend/dist
+
+        if [ -f $REMOTE/.rollback/server ]; then
+            sudo install -o root -g root -m 755 \
+                $REMOTE/.rollback/server $SERVER_REMOTE/server.new
+            sudo mv -f $SERVER_REMOTE/server.new $SERVER_REMOTE/server
+            sudo systemctl restart cserver
+        fi
+
         sudo systemctl restart sixdegrees-api
     " >/dev/null 2>&1 || printf '%srollback itself failed - the Pi needs a look%s\n' "$RED" "$OFF" >&2
 }
@@ -152,6 +188,52 @@ step "Syncing Python dependencies"
 ssh "$PI_HOST" "$REMOTE/CoreAPI/venv/bin/pip install -q -r $REMOTE/CoreAPI/requirements.txt" \
     || { rollback; die "pip install failed"; }
 ok "dependencies current"
+
+# ------------------------------------------------------------------ server
+
+if $WITH_SERVER; then
+    step "Building web server on the Pi"
+
+    # Built on the Pi rather than cross-compiled: it links against the Pi's
+    # own OpenSSL, and a mismatch there would only surface at runtime.
+    rsync -az --delete \
+        --exclude .git --exclude '*.o' --exclude server --exclude 'test/pathtest' \
+        "$SERVER_SRC/" "$PI_HOST:~/C-Server/"
+
+    ssh "$PI_HOST" "cd ~/C-Server && make clean >/dev/null && make -j4" \
+        >/dev/null 2>&1 || {
+            ssh "$PI_HOST" "cd ~/C-Server && make -j4 2>&1 | grep -E 'error|Error' | head -20" >&2
+            die "web server build failed"
+        }
+    ok "compiled"
+
+    # Path normalisation is the security-critical part. A binary that fails
+    # these must not reach a public listener.
+    ssh "$PI_HOST" "cd ~/C-Server && g++ -std=c++20 -pthread -I. -O1 \
+        -o test/pathtest test/PathTest.cpp HTTP/HttpParser.cpp Net/Stream.cpp \
+        -lssl -lcrypto && ./test/pathtest > /tmp/pathtest.out 2>&1" \
+        || {
+            ssh "$PI_HOST" "grep FAIL /tmp/pathtest.out | head" >&2
+            die "path traversal tests failed - binary not installed"
+        }
+    ok "path tests passed"
+
+    # Write beside the target and rename over it. Copying onto a running
+    # binary fails with ETXTBSY; rename only swaps the directory entry, so
+    # the running process keeps the old inode until it restarts.
+    ssh "$PI_HOST" "
+        set -e
+        sudo install -o root -g root -m 755 ~/C-Server/server $SERVER_REMOTE/server.new
+        sudo mv -f $SERVER_REMOTE/server.new $SERVER_REMOTE/server
+        sudo systemctl restart cserver
+    " || { rollback; die "installing the web server failed"; }
+
+    for _ in $(seq 1 15); do
+        sleep 1
+        [[ "$(curl -fsS -o /dev/null -w '%{http_code}' "$SITE" 2>/dev/null)" == "200" ]] && break
+    done
+    ok "web server restarted"
+fi
 
 # -------------------------------------------------------------------- data
 
@@ -256,6 +338,12 @@ ok "unauthorised delete refused"
 
 curl -s -o /dev/null -X DELETE "$SITE/api/games/$game_id" -H "X-Game-Token: $token"
 ok "test game cleaned up"
+
+for unit in cserver sixdegrees-api; do
+    state=$(ssh "$PI_HOST" "systemctl is-active $unit" 2>/dev/null || true)
+    [[ "$state" == "active" ]] || { rollback; die "$unit is $state"; }
+done
+ok "cserver and sixdegrees-api active"
 
 ssh "$PI_HOST" "rm -rf $REMOTE/.rollback"
 
